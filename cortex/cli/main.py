@@ -62,6 +62,7 @@ def learn(ctx, command: str, context: Optional[str], timeout: Optional[int], ses
         cortex learn "npm run build"
         cortex learn "git status" --context "checking repository"
         cortex learn "python" --topic
+        cortex learn "John Doe" --topic
     """
     # List of commands that typically start interactive sessions
     INTERACTIVE_COMMANDS = [
@@ -70,14 +71,59 @@ def learn(ctx, command: str, context: Optional[str], timeout: Optional[int], ses
         'psql', 'mysql', 'mongo', 'redis-cli', 'sqlite3'
     ]
     
-    # Check if command might be interactive
+    # Check if command looks like a topic/name rather than a command
+    def looks_like_topic(text: str) -> bool:
+        """Detect if input is likely a topic/name rather than a command."""
+        parts = text.strip().split()
+        
+        if not parts:
+            return False
+        
+        first_word = parts[0]
+        
+        # Check for file paths or script execution patterns
+        if any(char in first_word for char in ['/', '.sh', '.py', '.js', '.rb']):
+            return False
+        
+        # Known command starts
+        common_cmd_patterns = ['sudo', 'npm', 'git', 'docker', 'python', 'node', 'go', 'cargo', 'make']
+        if first_word.lower() in common_cmd_patterns:
+            return False
+        
+        # Common shell commands
+        common_commands = ['ls', 'cd', 'cat', 'grep', 'find', 'echo', 'mkdir', 'rm', 'cp', 'mv', 'chmod', 'chown']
+        if first_word.lower() in common_commands:
+            return False
+        
+        # Multiple capitalized words (likely a name or title)
+        if len(parts) > 1 and all(p[0].isupper() for p in parts if p and p[0].isalpha()):
+            return True
+        
+        # Contains punctuation that suggests a question or sentence
+        if any(char in text for char in ['?', '!', ';', ':']):
+            return True
+        
+        # If it has spaces and first word isn't recognized as command
+        if len(parts) > 1:
+            # Check for common command patterns
+            if not any(text.startswith(pattern) for pattern in ['-', '--']):
+                return True
+        
+        return False
+    
+    # Check if command might be interactive or a topic
     cmd_parts = command.strip().split()
     base_cmd = cmd_parts[0] if cmd_parts else ""
     is_likely_interactive = base_cmd in INTERACTIVE_COMMANDS and len(cmd_parts) == 1
+    is_likely_topic = looks_like_topic(command)
     
-    # If --topic flag is set or command is interactive without args, do research
-    if topic or is_likely_interactive:
-        if is_likely_interactive and not topic:
+    # If --topic flag is set or command is interactive/topic-like, do research
+    if topic or is_likely_interactive or is_likely_topic:
+        if is_likely_topic and not topic and not is_likely_interactive:
+            click.echo(f"💡 '{command}' appears to be a topic rather than a command.")
+            click.echo(f"    Switching to research mode...")
+            click.echo()
+        elif is_likely_interactive and not topic:
             click.echo(f"⚠️  '{command}' starts an interactive session.")
             click.echo(f"💡 Tip: Use 'cortex learn \"{command}\" --topic' to research this topic")
             click.echo(f"    or provide arguments: 'cortex learn \"{command} --version\"'")
