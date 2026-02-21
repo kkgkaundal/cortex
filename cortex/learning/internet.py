@@ -51,7 +51,8 @@ class InternetLearner:
             'sources': [],
             'facts': [],
             'steps': [],
-            'reliability': 0.0
+            'reliability': 0.0,
+            'summary': ''  # Add summary field for comprehensive answer
         }
         
         # Try DuckDuckGo first (no API key needed, instant answers)
@@ -72,9 +73,10 @@ class InternetLearner:
                 knowledge['sources'].append(wikipedia_result['source'])
                 knowledge['facts'].extend(new_facts[:5])  # Limit to 5 more facts
                 knowledge['steps'].extend(wikipedia_result['steps'])
-                # Average reliability if we have multiple sources
+                # Weighted average with more weight on higher reliability
                 if knowledge['reliability'] > 0:
-                    knowledge['reliability'] = (knowledge['reliability'] + wikipedia_result['reliability']) / 2
+                    # Weighted average favoring higher scores
+                    knowledge['reliability'] = (knowledge['reliability'] * 0.4 + wikipedia_result['reliability'] * 0.6)
                 else:
                     knowledge['reliability'] = wikipedia_result['reliability']
         
@@ -87,15 +89,24 @@ class InternetLearner:
                 knowledge['steps'].extend(builtin_knowledge['steps'])
                 knowledge['reliability'] = builtin_knowledge['reliability']
         
-        # Store in brain if available
+        # Store in brain if available with proper confidence scores
         if self.brain and knowledge['facts']:
+            # Use reliability as confidence for better scoring
+            confidence = min(knowledge['reliability'], 0.95)  # Cap at 0.95 to allow for improvement
             for fact in knowledge['facts']:
                 self.brain.learn_fact(
                     topic=clean_topic,
                     fact=fact,
+                    confidence=confidence,  # Pass reliability as confidence
                     source_type='internet',
                     reliability=knowledge['reliability']
                 )
+        
+        # Generate comprehensive summary
+        if knowledge['facts']:
+            # Take first 3 facts as summary
+            top_facts = knowledge['facts'][:3]
+            knowledge['summary'] = ' '.join(top_facts)
                 
         return knowledge
     
@@ -188,11 +199,11 @@ class InternetLearner:
                     'source': {
                         'title': f'DuckDuckGo: {query}',
                         'url': f'https://duckduckgo.com/?q={urllib.parse.quote(query)}',
-                        'reliability': 0.85  # DuckDuckGo aggregates from multiple sources
+                        'reliability': 0.90  # Increased for better instant answers
                     },
                     'facts': [],
                     'steps': [],
-                    'reliability': 0.85
+                    'reliability': 0.90  # Increased base reliability
                 }
                 
                 # Extract abstract (main answer)
@@ -299,11 +310,11 @@ class InternetLearner:
                     'source': {
                         'title': data.get('title', topic),
                         'url': data.get('content_urls', {}).get('desktop', {}).get('page', ''),
-                        'reliability': 0.9  # Wikipedia is generally reliable
+                        'reliability': 0.95  # Wikipedia is highly reliable for factual content
                     },
                     'facts': [],
                     'steps': [],
-                    'reliability': 0.9
+                    'reliability': 0.95  # Increased for verified encyclopedic content
                 }
                 
                 # Extract summary as facts
@@ -450,11 +461,11 @@ class InternetLearner:
                 'source': {
                     'title': f'Built-in Knowledge: {topic}',
                     'url': 'cortex://builtin-knowledge',
-                    'reliability': 0.8
+                    'reliability': 0.88  # Increased for curated high-quality content
                 },
                 'facts': kb_data['facts'],
                 'steps': kb_data.get('steps', []),
-                'reliability': 0.8
+                'reliability': 0.88  # Curated knowledge is reliable
             }
         
         # Generic response for unknown topics
