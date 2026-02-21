@@ -16,7 +16,7 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'cortex=cortex.cli.main:cli',
+            'cortex=cortex.cli.main:cortex',
         ],
     },
     python_requires='>=3.8',
