@@ -6,20 +6,32 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 from cortex.memory.database import MemoryDatabase
+from cortex.learning.background import BackgroundLearner
 
 
 class Brain:
     """Central intelligence that coordinates memory, learning, and reasoning."""
     
-    def __init__(self, db_path: str = "cortex.db"):
+    def __init__(self, db_path: str = "cortex.db", enable_background_learning: bool = True):
         """Initialize the brain.
         
         Args:
             db_path: Path to the memory database
+            enable_background_learning: Whether to start background learning system
         """
         self.db = MemoryDatabase(db_path)
         self.db.connect()
         self.current_session_id = None
+        
+        # Initialize background learning system
+        self.background_learner: Optional[BackgroundLearner] = None
+        if enable_background_learning:
+            self.background_learner = BackgroundLearner(
+                db_path=db_path,
+                batch_size=10,
+                cycle_time=2.0  # Process every 2 seconds
+            )
+            self.background_learner.start()
         
     def start_session(self, context: str = None) -> str:
         """Start a new learning session.
@@ -77,7 +89,7 @@ class Brain:
         Returns:
             memory_id: ID of the stored fact
         """
-        return self.db.add_semantic_memory(
+        memory_id = self.db.add_semantic_memory(
             topic=topic,
             fact=fact,
             confidence=confidence,
@@ -85,6 +97,13 @@ class Brain:
             source_type=source_type,
             reliability=reliability
         )
+        
+        # Add topic to background learning queue for continuous improvement
+        if self.background_learner and confidence < 0.9:
+            priority = 8 if confidence < 0.6 else 6
+            self.background_learner.add_topic(topic, priority=priority)
+        
+        return memory_id
         
     def learn_skill(self, skill_name: str, description: str = None,
                    steps: List[str] = None, prerequisites: List[str] = None,
@@ -164,8 +183,51 @@ class Brain:
         Returns:
             Dictionary of statistics
         """
-        return self.db.get_memory_stats()
+        stats = self.db.get_memory_stats()
+        
+        # Add background learning stats if available
+        if self.background_learner:
+            stats['background_learning'] = self.background_learner.get_status()
+        
+        return stats
+    
+    def get_background_learning_status(self) -> Optional[Dict[str, Any]]:
+        """Get status of background learning system.
+        
+        Returns:
+            Status dictionary or None if not enabled
+        """
+        if self.background_learner:
+            return self.background_learner.get_status()
+        return None
+    
+    def list_learning_topics(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """List topics currently being learned in background.
+        
+        Args:
+            limit: Maximum topics to return
+            
+        Returns:
+            List of topic statuses
+        """
+        if self.background_learner:
+            return self.background_learner.list_active_topics(limit=limit)
+        return []
+    
+    def boost_topic_priority(self, topic: str):
+        """Boost priority of a topic (e.g., user just asked about it).
+        
+        Args:
+            topic: Topic to boost
+        """
+        if self.background_learner:
+            self.background_learner.update_priority(topic, priority=9)
         
     def close(self):
         """Close the brain and database connection."""
+        # Stop background learning
+        if self.background_learner:
+            self.background_learner.save_state()
+            self.background_learner.stop()
+        
         self.db.close()

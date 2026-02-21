@@ -310,6 +310,9 @@ def ask(ctx, query: str, limit: int):
                     original_topic = original_topic.replace(prefix, "")
                 original_topic = original_topic.strip()
                 
+                # Boost priority for this topic in background learning
+                brain.boost_topic_priority(original_topic)
+                
                 # Search with various capitalizations
                 search_variations = [
                     original_topic,  # Original
@@ -690,6 +693,102 @@ def consolidate(ctx, days: int, export: Optional[str]):
             
     except Exception as e:
         click.echo(f"✗ Consolidation failed: {e}", err=True)
+        sys.exit(1)
+
+
+@cortex.command("background")
+@click.option("--action", "-a", type=click.Choice(["status", "topics", "boost"]), 
+              default="status", help="Action to perform")
+@click.option("--topic", "-t", help="Topic to boost (for boost action)")
+@click.option("--limit", "-l", type=int, default=20, help="Number of topics to show")
+@click.option("--format", "-f", type=click.Choice(["text", "json"]), default="text",
+              help="Output format")
+@click.pass_context
+def background(ctx, action: str, topic: Optional[str], limit: int, format: str):
+    """Manage background learning system.
+    
+    The background learning system continuously improves knowledge about topics
+    in the background, handling millions of topics with minimal resource usage.
+    
+    Examples:
+        cortex background --action status
+        cortex background --action topics --limit 50
+        cortex background --action boost --topic python
+    """
+    try:
+        brain = ctx.obj["brain"]
+        
+        if not brain.background_learner:
+            click.echo("⚠️  Background learning is not enabled", err=True)
+            return
+        
+        if action == "status":
+            status = brain.get_background_learning_status()
+            
+            if format == "json":
+                click.echo(json.dumps(status, indent=2))
+            else:
+                click.echo("=" * 60)
+                click.echo("🔄 BACKGROUND LEARNING SYSTEM")
+                click.echo("=" * 60)
+                click.echo(f"\n📊 Status: {'🟢 Running' if status['running'] else '🔴 Stopped'}")
+                click.echo(f"\n📚 Topics:")
+                click.echo(f"  • Total topics: {status['total_topics']:,}")
+                click.echo(f"  • Queued for learning: {status['queued_topics']:,}")
+                click.echo(f"  • Active in memory: {status['active_topics']:,}")
+                click.echo(f"\n⚡ Performance:")
+                click.echo(f"  • Cycles run: {status['cycles_run']:,}")
+                click.echo(f"  • Facts improved: {status['facts_learned']:,}")
+                click.echo(f"  • Improvement rounds: {status['improvement_rounds']:,}")
+                click.echo(f"  • Batch size: {status['batch_size']}")
+                click.echo(f"  • Cycle time: {status['cycle_time']}s")
+                if status['last_cycle']:
+                    click.echo(f"  • Last cycle: {status['last_cycle']}")
+                
+                click.echo(f"\n💡 The system can handle 5,000,000+ topics with minimal overhead")
+                click.echo(f"   Each topic uses ~100 bytes in memory")
+        
+        elif action == "topics":
+            topics = brain.list_learning_topics(limit=limit)
+            
+            if format == "json":
+                click.echo(json.dumps(topics, indent=2))
+            else:
+                click.echo("=" * 60)
+                click.echo(f"📚 ACTIVE LEARNING TOPICS (showing top {len(topics)})")
+                click.echo("=" * 60)
+                
+                if not topics:
+                    click.echo("\nNo topics currently in learning queue")
+                else:
+                    for i, topic_info in enumerate(topics, 1):
+                        priority = topic_info['priority']
+                        topic_name = topic_info['topic']
+                        rounds = topic_info['improvement_rounds']
+                        facts = topic_info['facts_count']
+                        
+                        # Priority indicator
+                        if priority >= 8:
+                            indicator = "🔥"
+                        elif priority >= 6:
+                            indicator = "⚡"
+                        else:
+                            indicator = "📖"
+                        
+                        click.echo(f"\n{i}. {indicator} {topic_name}")
+                        click.echo(f"   Priority: {priority}/10 | Facts: {facts} | Rounds: {rounds}")
+        
+        elif action == "boost":
+            if not topic:
+                click.echo("✗ Please specify a topic with --topic", err=True)
+                sys.exit(1)
+            
+            brain.boost_topic_priority(topic)
+            click.echo(f"✓ Boosted priority for topic: {topic}")
+            click.echo(f"  This topic will be prioritized in the next learning cycle")
+    
+    except Exception as e:
+        click.echo(f"✗ Background learning error: {e}", err=True)
         sys.exit(1)
 
 
