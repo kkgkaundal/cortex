@@ -74,9 +74,19 @@ cortex sandbox run "git status"
 ### Learning Sources
 
 - 🖥️ **System Behavior**: Commands, apps, workflows
-- 🌐 **Internet** (Hot Learning): Docs, tutorials, repos
+- 🌐 **Internet** (Hot Learning): Multi-source search (DuckDuckGo, Wikipedia) with real-time knowledge acquisition
 - 📄 **Documents**: PDFs, markdown, code repositories
 - 🧪 **Sandbox Experiments**: Validated through testing
+
+### Search Engines
+
+Cortex uses multiple search engines for comprehensive knowledge acquisition:
+
+- **DuckDuckGo**: Primary search engine with instant answers (no API key required)
+- **Wikipedia**: High-reliability encyclopedic knowledge via REST API
+- **Built-in Knowledge**: Offline fallback for common development topics
+
+The system automatically tries multiple sources and combines results for best coverage.
 
 ### Reinforcement Learning
 
@@ -103,7 +113,26 @@ cortex learn "npm test" --context "testing React app"
 ```bash
 # Query learned knowledge
 cortex ask "what's the best way to build this project?"
+
+# Ask about a topic (automatically searches semantic memory)
+cortex ask "tell me about python3"
 ```
+
+### Research
+```bash
+# Research a topic using multiple search engines
+cortex research "machine learning basics"
+
+# Research with explicit topic (optional)
+cortex research "deploy nextjs application" deployment
+```
+
+**Research Features:**
+- Multi-source search: DuckDuckGo + Wikipedia + Built-in knowledge
+- Automatic topic extraction from queries
+- Real-time knowledge acquisition with source attribution
+- Confidence scoring based on source reliability
+- Graceful fallback when APIs unavailable
 
 ### Status
 ```bash

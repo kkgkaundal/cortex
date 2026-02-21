@@ -1,11 +1,13 @@
 """
-Internet learning module for hot learning.
+Internet learning module for hot learning with real search engine integration.
 """
 import requests
 from typing import List, Dict, Optional, Any
 import json
 import hashlib
 from datetime import datetime
+import urllib.parse
+import re
 
 try:
     from bs4 import BeautifulSoup
@@ -15,7 +17,7 @@ except ImportError:
 
 
 class InternetLearner:
-    """Fetches and processes knowledge from the internet."""
+    """Fetches and processes knowledge from the internet using multiple search engines."""
     
     def __init__(self, brain=None):
         """Initialize internet learner.
@@ -26,11 +28,12 @@ class InternetLearner:
         self.brain = brain
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'Cortex/0.1.0 (Learning Agent)'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
+        self.search_engines = ['duckduckgo', 'wikipedia']
         
     def search_and_learn(self, query: str, topic: str) -> Dict[str, Any]:
-        """Search for knowledge and learn from results.
+        """Search for knowledge and learn from results using multiple search engines.
         
         Args:
             query: Search query
@@ -48,15 +51,30 @@ class InternetLearner:
             'reliability': 0.0
         }
         
-        # Try to use Wikipedia as a reliable source
-        wikipedia_result = self._search_wikipedia(topic)
-        if wikipedia_result:
-            knowledge['sources'].append(wikipedia_result['source'])
-            knowledge['facts'].extend(wikipedia_result['facts'])
-            knowledge['steps'].extend(wikipedia_result['steps'])
-            knowledge['reliability'] = wikipedia_result['reliability']
+        # Try DuckDuckGo first (no API key needed, instant answers)
+        ddg_result = self._search_duckduckgo(query, topic)
+        if ddg_result and ddg_result['facts']:
+            knowledge['sources'].append(ddg_result['source'])
+            knowledge['facts'].extend(ddg_result['facts'])
+            knowledge['steps'].extend(ddg_result['steps'])
+            knowledge['reliability'] = max(knowledge['reliability'], ddg_result['reliability'])
         
-        # If Wikipedia fails, use built-in knowledge base
+        # Then try Wikipedia as a reliable source
+        wikipedia_result = self._search_wikipedia(topic)
+        if wikipedia_result and wikipedia_result['facts']:
+            # Avoid duplicates
+            new_facts = [f for f in wikipedia_result['facts'] if f not in knowledge['facts']]
+            if new_facts:
+                knowledge['sources'].append(wikipedia_result['source'])
+                knowledge['facts'].extend(new_facts[:5])  # Limit to 5 more facts
+                knowledge['steps'].extend(wikipedia_result['steps'])
+                # Average reliability if we have multiple sources
+                if knowledge['reliability'] > 0:
+                    knowledge['reliability'] = (knowledge['reliability'] + wikipedia_result['reliability']) / 2
+                else:
+                    knowledge['reliability'] = wikipedia_result['reliability']
+        
+        # If both fail, use built-in knowledge base
         if not knowledge['facts']:
             builtin_knowledge = self._get_builtin_knowledge(topic)
             if builtin_knowledge:
@@ -76,6 +94,124 @@ class InternetLearner:
                 )
                 
         return knowledge
+    
+    def _search_duckduckgo(self, query: str, topic: str) -> Optional[Dict[str, Any]]:
+        """Search DuckDuckGo for instant answers and web results.
+        
+        Args:
+            query: Search query
+            topic: Topic for categorization
+            
+        Returns:
+            Dictionary with extracted knowledge or None
+        """
+        try:
+            # Use DuckDuckGo Instant Answer API (no API key needed)
+            api_url = "https://api.duckduckgo.com/"
+            params = {
+                'q': query,
+                'format': 'json',
+                'no_html': 1,
+                'skip_disambig': 1
+            }
+            
+            response = self.session.get(api_url, params=params, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                result = {
+                    'source': {
+                        'title': f'DuckDuckGo: {query}',
+                        'url': f'https://duckduckgo.com/?q={urllib.parse.quote(query)}',
+                        'reliability': 0.85  # DuckDuckGo aggregates from multiple sources
+                    },
+                    'facts': [],
+                    'steps': [],
+                    'reliability': 0.85
+                }
+                
+                # Extract abstract (main answer)
+                abstract = data.get('Abstract', '').strip()
+                if abstract and len(abstract) > 20:
+                    # Split into sentences
+                    sentences = re.split(r'(?<=[.!?])\s+', abstract)
+                    result['facts'].extend([s.strip() for s in sentences if len(s.strip()) > 20][:5])
+                
+                # Extract answer (direct answer)
+                answer = data.get('Answer', '').strip()
+                if answer and len(answer) > 20:
+                    # Remove HTML tags if any
+                    answer_clean = re.sub(r'<[^>]+>', '', answer)
+                    if answer_clean not in result['facts']:
+                        result['facts'].insert(0, answer_clean)
+                
+                # Extract definition
+                definition = data.get('Definition', '').strip()
+                if definition and len(definition) > 20:
+                    if definition not in result['facts']:
+                        result['facts'].insert(0, f"{topic}: {definition}")
+                
+                # Extract related topics as additional facts
+                related = data.get('RelatedTopics', [])
+                for item in related[:3]:  # Limit to 3
+                    if isinstance(item, dict) and 'Text' in item:
+                        text = item['Text'].strip()
+                        if text and len(text) > 20 and text not in result['facts']:
+                            result['facts'].append(text)
+                
+                return result if result['facts'] else None
+                
+        except Exception as e:
+            return None
+        
+        return None
+    
+    def _search_web_scrape(self, query: str, topic: str) -> Optional[Dict[str, Any]]:
+        """Search web and scrape results (fallback method).
+        
+        Args:
+            query: Search query
+            topic: Topic for categorization
+            
+        Returns:
+            Dictionary with extracted knowledge or None
+        """
+        if not BS4_AVAILABLE:
+            return None
+            
+        try:
+            # Use DuckDuckGo HTML search (no JavaScript needed)
+            search_url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
+            response = self.session.get(search_url, timeout=10)
+            
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                result = {
+                    'source': {
+                        'title': f'Web Search: {query}',
+                        'url': search_url,
+                        'reliability': 0.75
+                    },
+                    'facts': [],
+                    'steps': [],
+                    'reliability': 0.75
+                }
+                
+                # Extract search result snippets
+                results = soup.find_all('a', class_='result__snippet')
+                for snippet in results[:5]:  # First 5 results
+                    text = snippet.get_text(strip=True)
+                    if text and len(text) > 30:
+                        result['facts'].append(text)
+                
+                return result if result['facts'] else None
+                
+        except Exception as e:
+            return None
+        
+        return None
     
     def _search_wikipedia(self, topic: str) -> Optional[Dict[str, Any]]:
         """Search Wikipedia for topic information.
