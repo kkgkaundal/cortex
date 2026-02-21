@@ -246,6 +246,32 @@ def ask(ctx, query: str, limit: int):
                     stats = learning_engine.get_command_stats(cmd)
                     click.echo(f"  • {cmd} ({stats['success_rate']:.1f}% success rate)")
         
+        elif any(word in query.lower() for word in ["about", "what is", "tell me", "explain"]):
+            # Search for semantic knowledge
+            # Extract topic from query
+            topic_words = query.lower().replace("about", "").replace("what is", "").replace("tell me", "").replace("explain", "").strip().split()
+            
+            if topic_words:
+                # Try each potential topic word
+                found_facts = False
+                for topic in topic_words:
+                    facts = brain.recall_facts(topic=topic, min_confidence=0.0)
+                    if facts:
+                        found_facts = True
+                        click.echo(f"📚 Knowledge about '{topic}':")
+                        click.echo()
+                        for fact in facts[:limit]:
+                            click.echo(f"  • {fact['fact']}")
+                            click.echo(f"    Source: {fact.get('source_type', 'unknown')} | Confidence: {fact['confidence']:.2f}")
+                            click.echo()
+                        break
+                
+                if not found_facts:
+                    click.echo(f"No knowledge found about these topics yet.")
+                    click.echo(f"💡 Try: cortex learn \"{' '.join(topic_words)}\" --topic")
+            else:
+                click.echo("Please specify what you want to know about.")
+        
         else:
             # Default: show general insights
             click.echo("📈 Learning Statistics:")

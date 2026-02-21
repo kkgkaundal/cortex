@@ -3,10 +3,15 @@ Internet learning module for hot learning.
 """
 import requests
 from typing import List, Dict, Optional, Any
-from bs4 import BeautifulSoup
 import json
 import hashlib
 from datetime import datetime
+
+try:
+    from bs4 import BeautifulSoup
+    BS4_AVAILABLE = True
+except ImportError:
+    BS4_AVAILABLE = False
 
 
 class InternetLearner:
@@ -34,9 +39,6 @@ class InternetLearner:
         Returns:
             Dictionary with learned knowledge
         """
-        # Simulate search (in production, use real search API)
-        results = self._mock_search(query)
-        
         knowledge = {
             'query': query,
             'topic': topic,
@@ -46,26 +48,22 @@ class InternetLearner:
             'reliability': 0.0
         }
         
-        for result in results[:3]:  # Process top 3 results
-            try:
-                content = self._fetch_content(result['url'])
-                if content:
-                    extracted = self._extract_knowledge(content, topic)
-                    knowledge['sources'].append({
-                        'url': result['url'],
-                        'title': result['title'],
-                        'reliability': extracted['reliability']
-                    })
-                    knowledge['facts'].extend(extracted['facts'])
-                    knowledge['steps'].extend(extracted['steps'])
-            except Exception as e:
-                continue
-                
-        # Calculate overall reliability
-        if knowledge['sources']:
-            knowledge['reliability'] = sum(
-                s['reliability'] for s in knowledge['sources']
-            ) / len(knowledge['sources'])
+        # Try to use Wikipedia as a reliable source
+        wikipedia_result = self._search_wikipedia(topic)
+        if wikipedia_result:
+            knowledge['sources'].append(wikipedia_result['source'])
+            knowledge['facts'].extend(wikipedia_result['facts'])
+            knowledge['steps'].extend(wikipedia_result['steps'])
+            knowledge['reliability'] = wikipedia_result['reliability']
+        
+        # If Wikipedia fails, use built-in knowledge base
+        if not knowledge['facts']:
+            builtin_knowledge = self._get_builtin_knowledge(topic)
+            if builtin_knowledge:
+                knowledge['sources'].append(builtin_knowledge['source'])
+                knowledge['facts'].extend(builtin_knowledge['facts'])
+                knowledge['steps'].extend(builtin_knowledge['steps'])
+                knowledge['reliability'] = builtin_knowledge['reliability']
         
         # Store in brain if available
         if self.brain and knowledge['facts']:
@@ -78,6 +76,174 @@ class InternetLearner:
                 )
                 
         return knowledge
+    
+    def _search_wikipedia(self, topic: str) -> Optional[Dict[str, Any]]:
+        """Search Wikipedia for topic information.
+        
+        Args:
+            topic: Topic to search for
+            
+        Returns:
+            Dictionary with extracted knowledge or None
+        """
+        try:
+            # Use Wikipedia API
+            api_url = "https://en.wikipedia.org/api/rest_v1/page/summary/"
+            clean_topic = topic.replace(" ", "_")
+            response = self.session.get(f"{api_url}{clean_topic}", timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                result = {
+                    'source': {
+                        'title': data.get('title', topic),
+                        'url': data.get('content_urls', {}).get('desktop', {}).get('page', ''),
+                        'reliability': 0.9  # Wikipedia is generally reliable
+                    },
+                    'facts': [],
+                    'steps': [],
+                    'reliability': 0.9
+                }
+                
+                # Extract summary as facts
+                extract = data.get('extract', '')
+                if extract:
+                    # Split into sentences
+                    sentences = extract.replace('. ', '.|').split('|')
+                    result['facts'] = [s.strip() + '.' for s in sentences if len(s.strip()) > 20][:5]
+                
+                # Add description if available
+                description = data.get('description', '')
+                if description:
+                    result['facts'].insert(0, f"{topic}: {description}")
+                
+                return result if result['facts'] else None
+                
+        except Exception as e:
+            return None
+        
+        return None
+    
+    def _get_builtin_knowledge(self, topic: str) -> Optional[Dict[str, Any]]:
+        """Get built-in knowledge about common topics.
+        
+        Args:
+            topic: Topic to get knowledge about
+            
+        Returns:
+            Dictionary with knowledge or None
+        """
+        # Knowledge base for common topics
+        knowledge_base = {
+            'python': {
+                'facts': [
+                    'Python: a high-level, interpreted programming language',
+                    'Python emphasizes code readability with significant indentation',
+                    'Python supports multiple programming paradigms including procedural, object-oriented, and functional',
+                    'Python was created by Guido van Rossum and first released in 1991',
+                    'Python has a comprehensive standard library often described as having "batteries included"'
+                ],
+                'steps': [
+                    'Install Python from python.org',
+                    'Write code in .py files',
+                    'Run with: python filename.py',
+                    'Use pip for package management'
+                ]
+            },
+            'python3': {
+                'facts': [
+                    'Python 3: the current major version of Python, released in 2008',
+                    'Python 3 is not fully backward compatible with Python 2',
+                    'Python 3 includes improved Unicode support and better syntax',
+                    'Python 3 uses print as a function: print() instead of print statement',
+                    'Python 3.12 is the latest stable release with performance improvements'
+                ],
+                'steps': [
+                    'Check version: python3 --version',
+                    'Run scripts: python3 script.py',
+                    'Install packages: pip3 install package_name',
+                    'Create virtual environment: python3 -m venv env'
+                ]
+            },
+            'node': {
+                'facts': [
+                    'Node.js: a JavaScript runtime built on Chrome\'s V8 engine',
+                    'Node.js enables JavaScript to run on the server-side',
+                    'Node.js uses an event-driven, non-blocking I/O model',
+                    'Node.js has a large ecosystem via npm (Node Package Manager)',
+                    'Node.js was created by Ryan Dahl in 2009'
+                ],
+                'steps': [
+                    'Install Node.js from nodejs.org',
+                    'Check version: node --version',
+                    'Run JavaScript: node script.js',
+                    'Manage packages with npm or yarn'
+                ]
+            },
+            'javascript': {
+                'facts': [
+                    'JavaScript: a high-level, dynamic programming language',
+                    'JavaScript is one of the core technologies of the web alongside HTML and CSS',
+                    'JavaScript conforms to the ECMAScript specification',
+                    'JavaScript supports event-driven, functional, and imperative programming',
+                    'JavaScript can run in browsers and server-side via Node.js'
+                ],
+                'steps': []
+            },
+            'git': {
+                'facts': [
+                    'Git: a distributed version control system',
+                    'Git was created by Linus Torvalds in 2005',
+                    'Git tracks changes in source code during software development',
+                    'Git enables multiple developers to work on the same project',
+                    'Git is the most widely used version control system'
+                ],
+                'steps': [
+                    'Initialize: git init',
+                    'Stage changes: git add <file>',
+                    'Commit: git commit -m "message"',
+                    'Push to remote: git push origin main'
+                ]
+            }
+        }
+        
+        # Normalize topic for lookup
+        topic_key = topic.lower().strip()
+        
+        if topic_key in knowledge_base:
+            kb_data = knowledge_base[topic_key]
+            return {
+                'source': {
+                    'title': f'Built-in Knowledge: {topic}',
+                    'url': 'cortex://builtin-knowledge',
+                    'reliability': 0.8
+                },
+                'facts': kb_data['facts'],
+                'steps': kb_data.get('steps', []),
+                'reliability': 0.8
+            }
+        
+        # Generic response for unknown topics
+        return {
+            'source': {
+                'title': f'General Knowledge: {topic}',
+                'url': 'cortex://general-knowledge',
+                'reliability': 0.5
+            },
+            'facts': [
+                f'{topic} is a topic that you want to learn about',
+                f'Consider researching {topic} through official documentation',
+                f'Try: cortex research "{topic} tutorial" {topic}'
+            ],
+            'steps': [
+                f'Search for "{topic}" online',
+                'Read official documentation',
+                'Try practical examples',
+                'Practice regularly'
+            ],
+            'reliability': 0.5
+        }
         
     def _mock_search(self, query: str) -> List[Dict]:
         """Mock search results (replace with real search API).
@@ -134,6 +300,13 @@ class InternetLearner:
         Returns:
             Extracted knowledge
         """
+        if not BS4_AVAILABLE:
+            return {
+                'facts': [],
+                'steps': [],
+                'reliability': 0.0
+            }
+            
         soup = BeautifulSoup(html, 'html.parser')
         
         knowledge = {
