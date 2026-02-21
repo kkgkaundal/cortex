@@ -50,17 +50,98 @@ def cortex(ctx):
 @click.option("--context", "-c", help="Optional context for the learning observation")
 @click.option("--timeout", "-t", type=int, help="Execution timeout in seconds")
 @click.option("--session", "-s", help="Session ID to associate this learning with")
+@click.option("--topic", is_flag=True, help="Learn about the topic through research instead of executing")
 @click.pass_context
-def learn(ctx, command: str, context: Optional[str], timeout: Optional[int], session: Optional[str]):
-    """Learn from executing a command.
+def learn(ctx, command: str, context: Optional[str], timeout: Optional[int], session: Optional[str], topic: bool):
+    """Learn from executing a command or research a topic.
     
-    Executes a command in the sandbox and records the execution for pattern
-    detection and workflow learning.
+    By default, executes a command in the sandbox and records the execution.
+    With --topic flag, researches the topic instead of executing it.
     
     Example:
         cortex learn "npm run build"
         cortex learn "git status" --context "checking repository"
+        cortex learn "python" --topic
     """
+    # List of commands that typically start interactive sessions
+    INTERACTIVE_COMMANDS = [
+        'python', 'python3', 'node', 'irb', 'ruby', 'php', 'perl',
+        'bash', 'sh', 'zsh', 'fish', 'ipython', 'julia', 'R',
+        'psql', 'mysql', 'mongo', 'redis-cli', 'sqlite3'
+    ]
+    
+    # Check if command might be interactive
+    cmd_parts = command.strip().split()
+    base_cmd = cmd_parts[0] if cmd_parts else ""
+    is_likely_interactive = base_cmd in INTERACTIVE_COMMANDS and len(cmd_parts) == 1
+    
+    # If --topic flag is set or command is interactive without args, do research
+    if topic or is_likely_interactive:
+        if is_likely_interactive and not topic:
+            click.echo(f"⚠️  '{command}' starts an interactive session.")
+            click.echo(f"💡 Tip: Use 'cortex learn \"{command}\" --topic' to research this topic")
+            click.echo(f"    or provide arguments: 'cortex learn \"{command} --version\"'")
+            click.echo()
+            if not click.confirm("Do you want to research this topic instead?"):
+                click.echo("Cancelled.")
+                return
+        
+        # Research mode
+        try:
+            from cortex.learning.internet import InternetLearner
+        except ImportError:
+            click.echo("⚠️  Internet learning module not available.")
+            click.echo("💡 Alternatively, use: cortex research \"<query>\" <topic>")
+            click.echo()
+            click.echo("For now, storing as a semantic fact...")
+            brain = ctx.obj["brain"]
+            topic_name = base_cmd if is_likely_interactive else command
+            brain.learn_fact(
+                topic=topic_name,
+                fact=f"User wants to learn about {topic_name}",
+                source_type="user_request",
+                confidence=0.5
+            )
+            click.echo(f"✓ Noted interest in learning about '{topic_name}'")
+            return
+        
+        topic_name = base_cmd if is_likely_interactive else command
+        click.echo(f"🔍 Researching topic: {topic_name}")
+        click.echo()
+        
+        brain = ctx.obj["brain"]
+        learner = InternetLearner(brain)
+        
+        try:
+            knowledge = learner.search_and_learn(
+                query=f"what is {topic_name}",
+                topic=topic_name
+            )
+            
+            click.echo(f"✓ Research completed!")
+            click.echo()
+            click.echo(f"📊 Results:")
+            click.echo(f"  • Sources found: {len(knowledge['sources'])}")
+            click.echo(f"  • Facts learned: {len(knowledge['facts'])}")
+            click.echo(f"  • Steps extracted: {len(knowledge['steps'])}")
+            click.echo(f"  • Reliability: {knowledge['reliability']:.2f}")
+            click.echo()
+            
+            if knowledge['facts']:
+                click.echo("📝 Key facts learned:")
+                for i, fact in enumerate(knowledge['facts'][:3], 1):
+                    click.echo(f"  {i}. {fact[:100]}...")
+                click.echo()
+            
+            click.echo(f"💡 Use 'cortex ask \"tell me about {topic_name}\"' to recall this knowledge")
+            
+        except Exception as e:
+            click.echo(f"✗ Research failed: {e}", err=True)
+            sys.exit(1)
+        
+        return
+    
+    # Normal execution mode
     try:
         brain = ctx.obj["brain"]
         learning_engine = ctx.obj["learning_engine"]
