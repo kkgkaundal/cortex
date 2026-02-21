@@ -390,6 +390,105 @@ def version(ctx):
     click.echo("Intelligent Learning and Task Automation System")
 
 
+
+@cortex.command()
+@click.argument("query", type=str)
+@click.argument("topic", type=str)
+@click.pass_context
+def research(ctx, query: str, topic: str):
+    """Research a topic from internet sources.
+    
+    Example:
+        cortex research "deploy nextjs" deployment
+    """
+    from cortex.learning.internet import InternetLearner
+    
+    click.echo(f"🔍 Researching: {query}")
+    click.echo(f"📝 Topic: {topic}")
+    click.echo()
+    
+    brain = ctx.obj["brain"]
+    learner = InternetLearner(brain)
+    
+    try:
+        knowledge = learner.search_and_learn(query, topic)
+        
+        click.echo(f"✓ Research completed!")
+        click.echo()
+        click.echo(f"📊 Results:")
+        click.echo(f"  • Sources found: {len(knowledge['sources'])}")
+        click.echo(f"  • Facts learned: {len(knowledge['facts'])}")
+        click.echo(f"  • Steps extracted: {len(knowledge['steps'])}")
+        click.echo(f"  • Reliability: {knowledge['reliability']:.2f}")
+        click.echo()
+        
+        if knowledge['sources']:
+            click.echo("📚 Sources:")
+            for source in knowledge['sources']:
+                click.echo(f"  • {source['title']}")
+                click.echo(f"    {source['url']}")
+        
+    except Exception as e:
+        click.echo(f"✗ Research failed: {e}", err=True)
+        sys.exit(1)
+
+
+@cortex.command()
+@click.option("--days", default=7, help="Archive data older than this many days")
+@click.option("--export", help="Export knowledge base to file")
+@click.pass_context
+def consolidate(ctx, days: int, export: Optional[str]):
+    """Consolidate and maintain memory systems.
+    
+    Example:
+        cortex consolidate --days 7
+        cortex consolidate --export knowledge.json
+    """
+    from cortex.memory.consolidation import MemoryConsolidator
+    from cortex.utils.config import config
+    
+    brain = ctx.obj["brain"]
+    
+    click.echo("🔧 Starting memory consolidation...")
+    click.echo()
+    
+    consolidator = MemoryConsolidator(
+        db_path=config.get_db_path(),
+        archive_dir=config.get_archive_dir()
+    )
+    
+    try:
+        if export:
+            # Export knowledge base
+            click.echo(f"�� Exporting knowledge base to {export}...")
+            result = consolidator.export_knowledge_base(export)
+            
+            click.echo(f"✓ Export completed!")
+            click.echo()
+            click.echo(f"📊 Exported:")
+            click.echo(f"  • Semantic memories: {result['semantic_count']}")
+            click.echo(f"  • Skills: {result['skill_count']}")
+            click.echo(f"  • Sessions: {result['session_count']}")
+            click.echo(f"  • Output file: {result['output_file']}")
+        else:
+            # Run consolidation
+            report = consolidator.consolidate(days_threshold=days)
+            
+            click.echo(f"✓ Consolidation completed!")
+            click.echo()
+            click.echo(f"📊 Operations:")
+            for op in report['operations']:
+                click.echo(f"  • {op['operation']}: {op['count']} records")
+            
+            click.echo()
+            click.echo(f"⏱️  Started: {report['started_at']}")
+            click.echo(f"⏱️  Completed: {report.get('completed_at', 'N/A')}")
+            
+    except Exception as e:
+        click.echo(f"✗ Consolidation failed: {e}", err=True)
+        sys.exit(1)
+
+
 def main():
     """Entry point for the CLI."""
     cortex(obj={})
@@ -397,3 +496,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
