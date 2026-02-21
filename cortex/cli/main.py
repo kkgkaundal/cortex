@@ -42,7 +42,7 @@ def cortex(ctx):
     
     ctx.obj["brain"] = Brain(str(db_path))
     ctx.obj["learning_engine"] = LearningEngine(ctx.obj["brain"])
-    ctx.obj["sandbox"] = Sandbox(timeout=30)
+    ctx.obj["sandbox"] = Sandbox(timeout=30, shell=True)
 
 
 @cortex.command()
