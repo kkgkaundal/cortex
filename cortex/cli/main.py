@@ -295,26 +295,62 @@ def ask(ctx, query: str, limit: int):
         elif any(word in query.lower() for word in ["about", "what is", "tell me", "explain"]):
             # Search for semantic knowledge
             # Extract topic from query
-            topic_words = query.lower().replace("about", "").replace("what is", "").replace("tell me", "").replace("explain", "").strip().split()
+            query_cleaned = query.lower()
+            for phrase in ["about", "what is", "tell me", "explain"]:
+                query_cleaned = query_cleaned.replace(phrase, "")
+            query_cleaned = query_cleaned.strip()
             
-            if topic_words:
-                # Try each potential topic word
+            if query_cleaned:
+                # First try the full topic as-is (case-insensitive match)
                 found_facts = False
-                for topic in topic_words:
-                    facts = brain.recall_facts(topic=topic, min_confidence=0.0)
-                    if facts:
-                        found_facts = True
-                        click.echo(f"📚 Knowledge about '{topic}':")
-                        click.echo()
-                        for fact in facts[:limit]:
-                            click.echo(f"  • {fact['fact']}")
-                            click.echo(f"    Source: {fact.get('source_type', 'unknown')} | Confidence: {fact['confidence']:.2f}")
+                
+                # Try full topic (preserving original case structure)
+                original_topic = query.replace("about", "").replace("what is", "").replace("tell me", "").replace("explain", "")
+                for prefix in ["About", "What is", "Tell me", "Explain"]:
+                    original_topic = original_topic.replace(prefix, "")
+                original_topic = original_topic.strip()
+                
+                # Search with various capitalizations
+                search_variations = [
+                    original_topic,  # Original
+                    original_topic.lower(),  # lowercase
+                    original_topic.title(),  # Title Case
+                    ' '.join(word.capitalize() for word in original_topic.split())  # Each Word Capitalized
+                ]
+                
+                for topic_variant in search_variations:
+                    if topic_variant:
+                        facts = brain.recall_facts(topic=topic_variant, min_confidence=0.0)
+                        if facts:
+                            found_facts = True
+                            click.echo(f"📚 Knowledge about '{topic_variant}':")
                             click.echo()
+                            for fact in facts[:limit]:
+                                click.echo(f"  • {fact['fact']}")
+                                click.echo(f"    Source: {fact.get('source_type', 'unknown')} | Confidence: {fact['confidence']:.2f}")
+                                click.echo()
+                            break
+                    if found_facts:
                         break
+                
+                # If still not found, try individual words
+                if not found_facts:
+                    topic_words = query_cleaned.split()
+                    for topic in topic_words:
+                        facts = brain.recall_facts(topic=topic, min_confidence=0.0)
+                        if facts:
+                            found_facts = True
+                            click.echo(f"📚 Knowledge about '{topic}':")
+                            click.echo()
+                            for fact in facts[:limit]:
+                                click.echo(f"  • {fact['fact']}")
+                                click.echo(f"    Source: {fact.get('source_type', 'unknown')} | Confidence: {fact['confidence']:.2f}")
+                                click.echo()
+                            break
                 
                 if not found_facts:
                     click.echo(f"No knowledge found about these topics yet.")
-                    click.echo(f"💡 Try: cortex learn \"{' '.join(topic_words)}\" --topic")
+                    click.echo(f"💡 Try: cortex learn \"{original_topic}\"")
             else:
                 click.echo("Please specify what you want to know about.")
         
@@ -546,15 +582,27 @@ def version(ctx):
 
 @cortex.command()
 @click.argument("query", type=str)
-@click.argument("topic", type=str)
+@click.argument("topic", type=str, required=False)
 @click.pass_context
-def research(ctx, query: str, topic: str):
+def research(ctx, query: str, topic: Optional[str]):
     """Research a topic from internet sources.
+    
+    If topic is not provided, it will be derived from the query.
     
     Example:
         cortex research "deploy nextjs" deployment
+        cortex research "Linus Torvalds"
+        cortex research "python programming"
     """
     from cortex.learning.internet import InternetLearner
+    
+    # If topic not provided, derive it from query
+    if not topic:
+        # Extract key words from query (remove common words)
+        stop_words = {'what', 'is', 'how', 'to', 'the', 'a', 'an', 'about', 'tutorial', 'guide'}
+        words = query.lower().split()
+        topic_words = [w for w in words if w not in stop_words]
+        topic = ' '.join(topic_words) if topic_words else query
     
     click.echo(f"🔍 Researching: {query}")
     click.echo(f"📝 Topic: {topic}")
@@ -580,6 +628,9 @@ def research(ctx, query: str, topic: str):
             for source in knowledge['sources']:
                 click.echo(f"  • {source['title']}")
                 click.echo(f"    {source['url']}")
+        
+        click.echo()
+        click.echo(f"💡 Use 'cortex ask \"tell me about {topic}\"' to recall this knowledge")
         
     except Exception as e:
         click.echo(f"✗ Research failed: {e}", err=True)

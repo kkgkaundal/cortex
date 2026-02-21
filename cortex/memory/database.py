@@ -102,9 +102,10 @@ class MemoryDatabase:
         """Retrieve semantic memories."""
         cursor = self.conn.cursor()
         if topic:
+            # Use COLLATE NOCASE for case-insensitive matching
             cursor.execute("""
                 SELECT * FROM semantic_memory 
-                WHERE topic = ? AND confidence >= ?
+                WHERE topic = ? COLLATE NOCASE AND confidence >= ?
                 ORDER BY confidence DESC, access_count DESC LIMIT ?
             """, (topic, min_confidence, limit))
         else:
