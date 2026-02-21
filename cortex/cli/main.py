@@ -697,7 +697,7 @@ def consolidate(ctx, days: int, export: Optional[str]):
 
 
 @cortex.command("background")
-@click.option("--action", "-a", type=click.Choice(["status", "topics", "boost"]), 
+@click.option("--action", "-a", type=click.Choice(["status", "topics", "boost", "start", "stop"]), 
               default="status", help="Action to perform")
 @click.option("--topic", "-t", help="Topic to boost (for boost action)")
 @click.option("--limit", "-l", type=int, default=20, help="Number of topics to show")
@@ -712,6 +712,8 @@ def background(ctx, action: str, topic: Optional[str], limit: int, format: str):
     
     Examples:
         cortex background --action status
+        cortex background --action start
+        cortex background --action stop
         cortex background --action topics --limit 50
         cortex background --action boost --topic python
     """
@@ -786,6 +788,27 @@ def background(ctx, action: str, topic: Optional[str], limit: int, format: str):
             brain.boost_topic_priority(topic)
             click.echo(f"✓ Boosted priority for topic: {topic}")
             click.echo(f"  This topic will be prioritized in the next learning cycle")
+        
+        elif action == "start":
+            if brain.background_learner.running:
+                click.echo("⚠️  Background learning is already running")
+            else:
+                brain.background_learner.start()
+                click.echo("✓ Background learning started")
+                click.echo("  The system will continuously improve knowledge about topics")
+                click.echo("  Use 'cortex background --action stop' to stop")
+                status = brain.get_background_learning_status()
+                click.echo(f"\n📊 Current queue: {status['queued_topics']:,} topics ready to learn")
+        
+        elif action == "stop":
+            if not brain.background_learner.running:
+                click.echo("⚠️  Background learning is not running")
+            else:
+                click.echo("🛑 Stopping background learning...")
+                brain.background_learner.stop()
+                click.echo("✓ Background learning stopped")
+                click.echo("  Learning progress has been saved")
+                click.echo("  Use 'cortex background --action start' to resume")
     
     except Exception as e:
         click.echo(f"✗ Background learning error: {e}", err=True)

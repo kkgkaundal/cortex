@@ -129,6 +129,33 @@ cortex sandbox run "npm run build"
 cortex sandbox run "long-command" --timeout 120
 ```
 
+### Background Learning
+```bash
+# Start background learning (continuous improvement)
+cortex background --action start
+
+# Stop background learning
+cortex background --action stop
+
+# Check background learning status
+cortex background --action status
+
+# List active learning topics
+cortex background --action topics --limit 50
+
+# Boost priority of a specific topic
+cortex background --action boost --topic python
+```
+
+**Background Learning Features:**
+- Continuously improves knowledge about topics
+- Handles 5,000,000+ topics with minimal overhead (~100 bytes per topic)
+- Priority-based scheduling (low confidence = high priority)
+- Automatic activation when you learn facts
+- User queries automatically boost topic priority
+- Can be started/stopped on demand
+- Runs in background with 2-second cycles
+
 ## Architecture
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
