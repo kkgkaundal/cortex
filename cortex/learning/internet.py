@@ -42,9 +42,12 @@ class InternetLearner:
         Returns:
             Dictionary with learned knowledge
         """
+        # Extract core topic from natural language queries
+        clean_topic = self._extract_core_topic(topic)
+        
         knowledge = {
             'query': query,
-            'topic': topic,
+            'topic': clean_topic,
             'sources': [],
             'facts': [],
             'steps': [],
@@ -52,7 +55,8 @@ class InternetLearner:
         }
         
         # Try DuckDuckGo first (no API key needed, instant answers)
-        ddg_result = self._search_duckduckgo(query, topic)
+        # Use clean_topic for better search results
+        ddg_result = self._search_duckduckgo(clean_topic, clean_topic)
         if ddg_result and ddg_result['facts']:
             knowledge['sources'].append(ddg_result['source'])
             knowledge['facts'].extend(ddg_result['facts'])
@@ -60,7 +64,7 @@ class InternetLearner:
             knowledge['reliability'] = max(knowledge['reliability'], ddg_result['reliability'])
         
         # Then try Wikipedia as a reliable source
-        wikipedia_result = self._search_wikipedia(topic)
+        wikipedia_result = self._search_wikipedia(clean_topic)
         if wikipedia_result and wikipedia_result['facts']:
             # Avoid duplicates
             new_facts = [f for f in wikipedia_result['facts'] if f not in knowledge['facts']]
@@ -76,7 +80,7 @@ class InternetLearner:
         
         # If both fail, use built-in knowledge base
         if not knowledge['facts']:
-            builtin_knowledge = self._get_builtin_knowledge(topic)
+            builtin_knowledge = self._get_builtin_knowledge(clean_topic)
             if builtin_knowledge:
                 knowledge['sources'].append(builtin_knowledge['source'])
                 knowledge['facts'].extend(builtin_knowledge['facts'])
@@ -87,13 +91,73 @@ class InternetLearner:
         if self.brain and knowledge['facts']:
             for fact in knowledge['facts']:
                 self.brain.learn_fact(
-                    topic=topic,
+                    topic=clean_topic,
                     fact=fact,
                     source_type='internet',
                     reliability=knowledge['reliability']
                 )
                 
         return knowledge
+    
+    def _extract_core_topic(self, topic: str) -> str:
+        """Extract core topic from natural language input.
+        
+        Args:
+            topic: Raw topic string (may include conversational text)
+            
+        Returns:
+            Clean core topic
+        """
+        # Remove common conversational phrases
+        stop_phrases = [
+            ' and i ', ' i want to ', ' i need to ', ' how to ', ' how do i ',
+            ' tell me about ', ' what is ', ' what are ', ' explain ',
+            ' make code in ', ' write code in ', ' program in ', ' code in ',
+            ' learn about ', ' tutorial for ', ' guide to ', ' and ', ' in '
+        ]
+        
+        topic_lower = ' ' + topic.lower() + ' '  # Add spaces for boundary matching
+        for phrase in stop_phrases:
+            topic_lower = topic_lower.replace(phrase, ' ')
+        
+        topic_lower = topic_lower.strip()
+        
+        # Common multi-word topics (check these first)
+        multi_word_topics = [
+            'machine learning', 'deep learning', 'data science', 'artificial intelligence',
+            'web development', 'mobile development', 'software engineering', 'computer science',
+            'natural language processing', 'computer vision'
+        ]
+        
+        for multi_word in multi_word_topics:
+            if multi_word in topic_lower:
+                return multi_word
+        
+        # Common programming languages and technologies
+        single_word_topics = [
+            'javascript', 'typescript', 'python', 'java', 'c++', 'c#', 'ruby',
+            'php', 'swift', 'kotlin', 'golang', 'rust', 'scala', 'perl',
+            'html', 'css', 'sql', 'bash', 'shell', 'react', 'angular', 'vue',
+            'node', 'nodejs', 'django', 'flask', 'spring', 'docker', 'kubernetes',
+            'git', 'linux', 'windows', 'macos', 'android', 'ios', 'web', 'mobile'
+        ]
+        
+        # Check for single word topics (prioritize longer matches first)
+        sorted_topics = sorted(single_word_topics, key=len, reverse=True)
+        for known in sorted_topics:
+            if known in topic_lower:
+                return known
+        
+        # If no known topic found, return first meaningful word (not stop word)
+        words = topic_lower.split()
+        stop_words = ['and', 'the', 'a', 'an', 'to', 'of', 'for', 'on', 'with', 'as', 'by', 'i']
+        for word in words:
+            word = word.strip()
+            if word and word not in stop_words and len(word) > 2:
+                return word
+        
+        # Fallback to original topic
+        return topic.strip()
     
     def _search_duckduckgo(self, query: str, topic: str) -> Optional[Dict[str, Any]]:
         """Search DuckDuckGo for instant answers and web results.
@@ -340,6 +404,39 @@ class InternetLearner:
                     'Stage changes: git add <file>',
                     'Commit: git commit -m "message"',
                     'Push to remote: git push origin main'
+                ]
+            },
+            'java': {
+                'facts': [
+                    'Java: a high-level, class-based, object-oriented programming language',
+                    'Java was originally developed by James Gosling at Sun Microsystems (now Oracle)',
+                    'Java follows the "write once, run anywhere" (WORA) principle via the JVM',
+                    'Java is widely used for enterprise applications, Android apps, and web services',
+                    'Java has automatic memory management through garbage collection',
+                    'Java is strongly typed and uses compiled bytecode for platform independence'
+                ],
+                'steps': [
+                    'Install JDK (Java Development Kit) from Oracle or OpenJDK',
+                    'Write code in .java files',
+                    'Compile with: javac YourClass.java',
+                    'Run with: java YourClass',
+                    'Use Maven or Gradle for dependency management'
+                ]
+            },
+            'c++': {
+                'facts': [
+                    'C++: a high-performance, general-purpose programming language',
+                    'C++ is an extension of C with object-oriented features',
+                    'C++ provides low-level memory manipulation and high-level abstractions',
+                    'C++ is widely used for system software, game engines, and performance-critical applications',
+                    'C++ supports multiple programming paradigms including procedural, object-oriented, and generic'
+                ],
+                'steps': [
+                    'Install compiler (g++, clang, or MSVC)',
+                    'Write code in .cpp files',
+                    'Compile with: g++ -o program program.cpp',
+                    'Run with: ./program',
+                    'Use CMake for build management'
                 ]
             }
         }
